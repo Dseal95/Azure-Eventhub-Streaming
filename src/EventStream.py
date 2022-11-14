@@ -29,7 +29,6 @@ class AzureEventHubStreamer:
         # event df
         self.df = None
 
-    @classmethod
     def stream_events(self):
         """Stream events from Azure Eventhub."""
         # set up eventhub connection (client)

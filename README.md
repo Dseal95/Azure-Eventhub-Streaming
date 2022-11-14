@@ -7,6 +7,8 @@ A standalone class `AzureEventHubStreamer` that is able to stream events from Az
 
 **NOTE:** Inspiration taken from https://github.com/Azure/azure-sdk-for-python/blob/main/sdk/eventhub/azure-eventhub/samples/sync_samples/recv.py. I modified the code with main changes being that I added a way of storing the events. 
 
+Link to **Medium** article that uses this repository - https://medium.com/@dan.seal.06/stream-receive-azure-eventhub-events-using-python-1ac16f474a35
+
 ### Setting Up
 
 - (1) Clone the repository, https://github.com/Dseal95/Azure-Eventhub-Streaming.git

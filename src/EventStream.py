@@ -1,25 +1,27 @@
+"""Module containing functionality to stream events from Azure Eventhub."""
+
 from datetime import timedelta, datetime
 import logging
 import threading
 import time
-import os
 
 import pandas as pd
 from azure.eventhub import EventHubConsumerClient
 
 
-class EventHubStreamer:
-    """"""
+logging.getLogger().setLevel(logging.INFO)
 
-    def __init__(self):
-        """"""
-        self.eventhub_name = os.environ.get("eventhub_name")
-        self.connection_string = os.environ.get("connection_string")
-        self.consumer_group = os.environ.get("consumer_group")
-        self.streaming_duration = os.environ.get("streaming_duration")
-        self.streaming_window = os.environ.get("streaming_window")
 
-        self.consumer_client = None
+class AzureEventHubStreamer:
+    """Class to stream events from Azure Eventhub."""
+
+    def __init__(self, config):
+        """Initialisation."""
+        self.eventhub_name = config["eventhub_name"]
+        self.connection_string = config["connection_string"]
+        self.consumer_group = config["consumer_group"]
+        self.streaming_duration = config["streaming_duration"]
+        self.streaming_window = config["streaming_window"]
 
         # list to store events
         self.streamed_events = []
@@ -27,79 +29,24 @@ class EventHubStreamer:
         # event df
         self.df = None
 
-        return
-
-    def on_event(self, partition_context, event):
-        """"""
-        logging.info(
-            "\t<on_event()> Received event from partition {}".format(
-                partition_context.partition_id
-            )
-        )
-
-        # update checkpoint to stream from
-        partition_context.update_checkpoint(event)
-
-        # add events to list
-        self.streamed_events.append(event.body_as_json())
-
-        return self
-
-    def on_partition_initialize(partition_context):
-        """"""
-        logging.info(
-            "\t<on_partition_initialize()> Partition: {} has been initialized.".format(
-                partition_context.partition_id
-            )
-        )
-
-    def on_partition_close(partition_context, reason):
-        """"""
-        logging.info(
-            "\t<on_partition_close()> Partition: {} has been closed, reason for closing: {}.".format(
-                partition_context.partition_id, reason
-            )
-        )
-
-    def on_error(partition_context, error):
-        """"""
-        if partition_context:
-            logging.info(
-                "\t<on_error()> An exception: {} occurred during receiving from Partition: {}.".format(
-                    partition_context.partition_id, error
-                )
-            )
-        else:
-            logging.info(
-                "\t<on_error()> An exception: {} occurred during the load balance process.".format(
-                    error
-                )
-            )
-
-    def set_up_eventhub_connection(self):
-        """Set up connection to Azure EventHub."""
-        logging.info(
-            f"\t<set_up_eventhub_connection()> Connecting to Azure EventHub: {self.eventhub_name}"
-        )
-        consumer_client = EventHubConsumerClient.from_connection_string(
-            conn_str=self.connection_string,
+    @classmethod
+    def stream_events(self):
+        """Stream events from Azure Eventhub."""
+        # set up eventhub connection (client)
+        consumer_client = self.set_up_eventhub_connection(
+            connection_string=self.connection_string,
             consumer_group=self.consumer_group,
             eventhub_name=self.eventhub_name,
         )
 
-        return consumer_client
-
-    def stream_events(self):
-        """Stream events from Azure Eventhub."""
-
         # calculate the streaming starting position
         starting_position = datetime.now() - timedelta(
-            hours=0, minutes=self.self.streaming_window
+            hours=0, minutes=self.streaming_window
         )
 
         # stream events from EventHub
         thread = threading.Thread(
-            target=self.consumer_client.receive,
+            target=consumer_client.receive,
             kwargs={
                 "on_event": self.on_event,
                 "starting_position": starting_position,  # datetime value
@@ -115,7 +62,7 @@ class EventHubStreamer:
         # only stream for receive_duration seconds
         time.sleep(self.streaming_duration)
         # close the connection to EventHub
-        self.consumer_client.close()
+        consumer_client.close()
         # terminate the thread
         thread.join()
 
@@ -128,6 +75,55 @@ class EventHubStreamer:
 
         if event_data is not None:
             self.df = event_data.apply(pd.Series)
+
+        return self
+
+    def on_event(self, partition_context, event):
+        logging.info(
+            "\t<on_event()> Received event from partition {}".format(
+                partition_context.partition_id
+            )
+        )
+
+        # update checkpoint to stream from
+        partition_context.update_checkpoint(event)
+
+        # add events to list
+        self.streamed_events.append(event.body_as_json())
+
+        return self
+
+    def on_partition_initialize(self, partition_context):
+        logging.info(
+            "\t<on_partition_initialize()> Partition: {} has been initialized.".format(
+                partition_context.partition_id
+            )
+        )
+
+        return self
+
+    def on_partition_close(self, partition_context, reason):
+        logging.info(
+            "\t<on_partition_close()> Partition: {} has been closed, reason for closing: {}.".format(
+                partition_context.partition_id, reason
+            )
+        )
+
+        return self
+
+    def on_error(self, partition_context, error):
+        if partition_context:
+            logging.info(
+                "\t<on_error()> An exception: {} occurred during receiving from Partition: {}.".format(
+                    partition_context.partition_id, error
+                )
+            )
+        else:
+            logging.info(
+                "\t<on_error()> An exception: {} occurred during the load balance process.".format(
+                    error
+                )
+            )
 
         return self
 
@@ -146,3 +142,19 @@ class EventHubStreamer:
             series = pd.Series(list_series)
 
         return series
+
+    @staticmethod
+    def set_up_eventhub_connection(
+        connection_string: str, consumer_group: str, eventhub_name: str
+    ):
+        """Set up connection to Azure EventHub."""
+        logging.info(
+            f"\t<set_up_eventhub_connection()> Connecting to Azure EventHub: {eventhub_name}"
+        )
+        consumer_client = EventHubConsumerClient.from_connection_string(
+            conn_str=connection_string,
+            consumer_group=consumer_group,
+            eventhub_name=eventhub_name,
+        )
+
+        return consumer_client
